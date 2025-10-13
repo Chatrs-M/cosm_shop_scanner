@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>扫码 → 打开 AppSheet</title>
+  <style>
+    body { font-family: sans-serif; padding: 12px; }
+    #reader { width:100%; max-width:480px; margin: 8px auto; }
+    #msg { white-space:pre-line; margin-top:8px; color:#333;}
+    button { padding:8px 12px; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <h3>扫码并打开 AppSheet（自动开始）</h3>
+  <div id="reader"></div>
+  <div id="msg">正在初始化……</div>
+  <button id="stopBtn" style="display:none">停止摄像头</button>
+
+  <!-- 使用 html5-qrcode（CDN）-->
+  <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+  <script>
+    // —— 替换这两项为你的实际值 —— 
+    const APPSHEET_APP_START_URL = "https://www.appsheet.com/start/c2893944-c589-4385-833c-17a86cc10826#view=Procurment_Form";
+    const BARCODE_FIELD = "Code"; // 你 AppSheet 中的列名 (区分大小写)
+    // ----------------------------------------------------
+
+    const msg = document.getElementById('msg');
+    const stopBtn = document.getElementById('stopBtn');
+    let html5QrcodeScanner = null;
+
+    function log(s){ msg.textContent = s; }
+
+    function startScanner() {
+      log("获取摄像头列表并启动摄像头...");
+      Html5Qrcode.getCameras().then(cameras => {
+        if (!cameras || cameras.length === 0) {
+          log("未找到可用摄像头。请确认设备有摄像头并允许访问。");
+          return;
+        }
+        // 优先使用后置摄像头（若存在）
+        let cameraId = cameras[0].id;
+        for (let c of cameras) {
+          if (c.label && /back|rear|environment/i.test(c.label)) { cameraId = c.id; break; }
+        }
+
+        html5QrcodeScanner = new Html5Qrcode("reader");
+        const config = { fps: 10, qrbox: { width: 300, height: 100 }, formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.QR_CODE ] };
+
+        html5QrcodeScanner.start(
+          cameraId,
+          config,
+          qrCodeMessage => {
+            // 扫描成功
+            log("扫描到: " + qrCodeMessage + "\n正在停止摄像头并跳转到 AppSheet...");
+            html5QrcodeScanner.stop().then(() => {
+              stopBtn.style.display = "none";
+              // 构造 AppSheet 预填 URL，注意要对字段和值 URL encode
+              const paramName = encodeURIComponent(BARCODE_FIELD);
+              const paramValue = encodeURIComponent(qrCodeMessage.trim());
+              const sep = APPSHEET_APP_START_URL.includes('?') ? '&' : '?';
+              const prefillUrl = APPSHEET_APP_START_URL + sep + paramName + '=' + paramValue;
+              // 跳转
+              window.location.href = prefillUrl;
+            }).catch(err => {
+              log("停止摄像头失败，请手动返回；错误：" + err);
+            });
+          },
+          errorMessage => {
+            // 扫描失败回调（忽略大量“未找到”错误）
+            // console.log("scan fail", errorMessage);
+          }
+        ).then(() => {
+          stopBtn.style.display = "inline-block";
+          log("正在扫描，请把条码对准摄像头。若看不到画面，请检查浏览器相机权限和是否为 HTTPS 页面。");
+        }).catch(err => {
+          log("启动摄像头失败：\n" + err + "\n常见原因：未启用相机权限、页面不是 HTTPS（或 localhost）、浏览器不支持 getUserMedia。");
+        });
+
+      }).catch(err => {
+        log("无法获取摄像头列表：\n" + err + "\n若是 file:// 打开的页面，大多数浏览器会阻止访问摄像头，请将页面放到 HTTPS 服务并重试。");
+      });
+    }
+
+    stopBtn.addEventListener('click', () => {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => {
+          log("摄像头已停止。刷新页面以重新开始扫码。");
+          stopBtn.style.display = "none";
+        });
+      }
+    });
+
+    // 页面加载后自动开始（如果你不希望自动，可移除）
+    window.addEventListener('load', () => {
+      startScanner();
+    });
+
+  </script>
+</body>
+</html>
