@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>条码扫描器</title>
+<style>
+  body { margin:0; text-align:center; background:#000; color:#fff; font-family:sans-serif; }
+  video { width:100%; height:auto; }
+  #msg { position:fixed; bottom:10px; width:100%; text-align:center; color:#0f0; font-size:18px; }
+</style>
+</head>
+<body>
+  <video id="v" autoplay playsinline></video>
+  <div id="msg">正在启动摄像头...</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+  <script>
+  const v = document.getElementById('v');
+  const msg = document.getElementById('msg');
+  let running = true;
+
+  async function startCam() {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      v.srcObject = s;
+      requestAnimationFrame(scan);
+      msg.innerText = "请将条形码置于画面中央";
+    } catch (e) {
+      msg.innerText = "无法开启摄像头：" + e.message;
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  async function scan() {
+    if (!running) return;
+    if (v.readyState === v.HAVE_ENOUGH_DATA) {
+      canvas.width = v.videoWidth;
+      canvas.height = v.videoHeight;
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imgData.data, imgData.width, imgData.height);
+      if (code) {
+        running = false;
+        msg.innerText = "识别成功：" + code.data;
+        // 👇修改下面的 URL 为你的 AppSheet 表单链接
+        window.location.href = "https://www.appsheet.com/start/你的AppID#barcode=" + encodeURIComponent(code.data);
+        return;
+      }
+    }
+    requestAnimationFrame(scan);
+  }
+
+  startCam();
+  </script>
+</body>
+</html>
