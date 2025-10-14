@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <video id="v" autoplay playsinline width="100%" height="auto"></video>
+  <script>
+  async function openCam(){
+    try{
+      const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+      v.srcObject=s;
+    }catch(e){alert(e);}
+  }
+  openCam();
+  </script>
+</body>
+</html>
