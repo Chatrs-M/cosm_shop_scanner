@@ -52,7 +52,7 @@
         const barcodeValue = encodeURIComponent(code.data);
 
         // ✅ 正确格式：#control=FormName&defaults.FieldName=Value
-        const finalURL = `https://www.appsheet.com/start/${appId}#control=${viewName}&defaults.${columnName}=${barcodeValue}`;
+        const finalURL = `https://www.appsheet.com/start/${appId}#control=${viewName}&defaults={"Code":${barcodeValue}`;
 
         window.location.href = finalURL;
         return;
@@ -65,3 +65,4 @@
   </script>
 </body>
 </html>
+
