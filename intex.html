@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cosmetics Shop Scanner</title>
+<meta name="robots" content="noindex, nofollow">
+
+<!-- Quagga2 条码识别库 -->
+<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+
+<style>
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, #fff5f8 0%, #ffeaf1 100%);
+    color: #d63384;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    text-align: center;
+  }
+
+  h2 {
+    margin-top: 16px;
+    color: #d63384;
+  }
+
+  #scanner-container {
+    position: relative;
+    width: 90vw;
+    height: 45vh;
+    margin: 20px auto;
+    overflow: hidden;
+    border: 2px solid rgba(255, 105, 180, 0.4);
+    border-radius: 12px;
+    box-shadow: 0 0 10px rgba(255, 182, 193, 0.6);
+  }
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .corner {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border: 3px solid #ff69b4;
+  }
+  .top-left { top: 0; left: 0; border-right: none; border-bottom: none; }
+  .top-right { top: 0; right: 0; border-left: none; border-bottom: none; }
+  .bottom-left { bottom: 0; left: 0; border-right: none; border-top: none; }
+  .bottom-right { bottom: 0; right: 0; border-left: none; border-top: none; }
+
+  .center-line {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background-color: #ff69b4;
+    transform: translateY(-50%);
+  }
+
+  #result {
+    font-size: 1.3em;
+    margin: 20px 0;
+    color: #b03060;
+    font-weight: 600;
+  }
+
+  button {
+    display: block;
+    width: 85%;
+    margin: 10px auto;
+    padding: 14px;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.1em;
+    color: #fff;
+    font-weight: 600;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+  }
+
+  button:active {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(255, 182, 193, 0.8);
+  }
+
+  #btnProc { background-color: #ff99cc; }
+  #btnSales { background-color: #ff7bac; }
+  #btnDetail { background-color: #f48fb1; }
+
+  audio { display: none; }
+</style>
+</head>
+
+<body>
+  <h2>Cosmetics Shop Scanner</h2>
+
+  <div id="scanner-container">
+    <video id="video"></video>
+    <div class="corner top-left"></div>
+    <div class="corner top-right"></div>
+    <div class="corner bottom-left"></div>
+    <div class="corner bottom-right"></div>
+    <div class="center-line"></div>
+  </div>
+
+  <div id="result">等待扫描中...</div>
+
+  <button id="btnProc">🩷 购货录入</button>
+  <button id="btnSales">💗 销售录入</button>
+  <button id="btnDetail">💖 查看详情</button>
+
+  <!-- 提示音 -->
+  <audio id="beep-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+
+  <script>
+    let lastCode = "";
+
+    function startScanner() {
+      Quagga.init({
+        inputStream: {
+          type: "LiveStream",
+          target: document.querySelector("#scanner-container"),
+          constraints: { facingMode: "environment" }
+        },
+        decoder: { readers: ["code_128_reader"] }
+      }, function(err) {
+        if (err) {
+          console.error(err);
+          document.getElementById('result').innerText = "无法启动摄像头，请检查权限";
+          return;
+        }
+        Quagga.start();
+        document.getElementById('result').innerText = "请将条码置于粉色框内扫描...";
+      });
+
+      Quagga.onDetected(function(result) {
+        const code = result.codeResult.code;
+        if (code && code !== lastCode) {
+          lastCode = code;
+          document.getElementById('result').innerText = "识别成功：" + code;
+
+          // 播放提示音
+          const beep = document.getElementById("beep-sound");
+          beep.currentTime = 0;
+          beep.play().catch(() => {
+            console.warn("提示音播放失败（可能浏览器限制自动播放）");
+          });
+        }
+      });
+    }
+
+    function openAppSheet(view, code) {
+      const appId = "c2893944-c589-4385-833c-17a86cc10826";
+      const encoded = encodeURIComponent(`{"Code":"${code}"}`);
+      const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&defaults=${encoded}`;
+      const appURL = `appsheet://app?appId=${appId}#view=${view}&defaults=${encoded}`;
+
+      // 优先尝试打开 AppSheet App
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = appURL;
+      document.body.appendChild(iframe);
+
+      // 若 1.5 秒内未响应则跳转网页版
+      setTimeout(() => {
+        window.location.href = webURL;
+      }, 1500);
+    }
+
+    document.getElementById("btnProc").addEventListener("click", function() {
+      if (!lastCode) return alert("请先扫描条码");
+      openAppSheet("Procurment_Form", lastCode);
+    });
+    document.getElementById("btnSales").addEventListener("click", function() {
+      if (!lastCode) return alert("请先扫描条码");
+      openAppSheet("Sales_Form", lastCode);
+    });
+    document.getElementById("btnDetail").addEventListener("click", function() {
+      if (!lastCode) return alert("请先扫描条码");
+      openAppSheet("Procurment_Detail", lastCode);
+    });
+
+    startScanner();
+  </script>
+</body>
+</html>
