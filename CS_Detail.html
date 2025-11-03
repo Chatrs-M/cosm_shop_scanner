@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="zh">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cosmetics Scanner - 查看详情</title>
 <meta name="robots" content="noindex, nofollow">
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
@@ -18,7 +20,8 @@
   .bottom-right{bottom:0;right:0;border-left:none;border-top:none;}
   .center-line{position:absolute;top:50%;left:0;width:100%;height:2px;background-color:#ff69b4;transform:translateY(-50%);}
   #result{font-size:1.3em;margin:20px 0;font-weight:600;}
-</style></head>
+</style>
+</head>
 <body>
 <h2>查看详情扫码</h2>
 <div id="scanner-container"><video id="video"></video>
@@ -26,20 +29,54 @@
 <div id="result">等待扫描中...</div>
 <audio id="beep-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
 <script>
-const appId="c2893944-c589-4385-833c-17a86cc10826";const view="Procurment_Detail";let lastCode="";
-function startScanner(){
-Quagga.init({inputStream:{type:"LiveStream",target:document.querySelector("#scanner-container"),constraints:{facingMode:"environment"}},decoder:{readers:["code_128_reader"]}},
-err=>{if(err){document.getElementById('result').innerText="无法启动摄像头";return;}
-Quagga.start();document.getElementById('result').innerText="请将条码置于粉色框内扫描...";});
-Quagga.onDetected(res=>{const code=res.codeResult.code;if(code&&code!==lastCode){lastCode=code;document.getElementById('result').innerText="识别成功："+code;
-const beep=document.getElementById("beep-sound");beep.currentTime=0;beep.play().catch(()=>{});openAppSheet(view,code);}});}
-function openAppSheet(view,code){
-// 改成直接跳转到符合 Code 的那条记录
-const filter = encodeURIComponent(`FILTER("Procurement", [Code] = "${code}")`);
-const appURL = `appsheet://app?appId=${appId}#view=${view}&at=${filter}`;
-const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&at=${filter}`;
-const iframe=document.createElement("iframe");iframe.style.display="none";iframe.src=appURL;document.body.appendChild(iframe);
-setTimeout(()=>window.location.href=webURL,1500);}
+const appId = "c2893944-c589-4385-833c-17a86cc10826";
+const view = "TempUserInput_Detail"; // 使用 TempUserInput_Detail
+let lastCode = "";
+
+function startScanner() {
+  Quagga.init({
+    inputStream: {
+      type: "LiveStream",
+      target: document.querySelector("#scanner-container"),
+      constraints: { facingMode: "environment" }
+    },
+    decoder: { readers: ["code_128_reader"] }
+  }, err => {
+    if(err){
+      document.getElementById('result').innerText = "无法启动摄像头";
+      return;
+    }
+    Quagga.start();
+    document.getElementById('result').innerText = "请将条码置于粉色框内扫描...";
+  });
+
+  Quagga.onDetected(res => {
+    const code = res.codeResult.code;
+    if(code && code !== lastCode){
+      lastCode = code;
+      document.getElementById('result').innerText = "识别成功：" + code;
+      const beep = document.getElementById("beep-sound");
+      beep.currentTime = 0;
+      beep.play().catch(()=>{});
+      openAppSheet(view, code);
+    }
+  });
+}
+
+function openAppSheet(view, code){
+  // 通过 defaults 填写 TempUserInput[ScanCode]
+  const encoded = encodeURIComponent(`{"ScanCode":"${code}"}`);
+  const appURL = `appsheet://app?appId=${appId}#view=${view}&defaults=${encoded}`;
+  const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&defaults=${encoded}`;
+
+  const iframe = document.createElement("iframe");
+  iframe.style.display = "none";
+  iframe.src = appURL;
+  document.body.appendChild(iframe);
+
+  setTimeout(() => window.location.href = webURL, 1000);
+}
+
 startScanner();
 </script>
 </body>
