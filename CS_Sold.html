@@ -26,7 +26,7 @@
 <div id="result">等待扫描中...</div>
 <audio id="beep-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
 <script>
-const appId="c2893944-c589-4385-833c-17a86cc10826";const view="Sales_Form";let lastCode="";
+const appId="c2893944-c589-4385-833c-17a86cc10826";const view="Order Comfirm_Form";let lastCode="";
 function startScanner(){
 Quagga.init({inputStream:{type:"LiveStream",target:document.querySelector("#scanner-container"),constraints:{facingMode:"environment"}},decoder:{readers:["code_128_reader"]}},
 err=>{if(err){document.getElementById('result').innerText="无法启动摄像头";return;}
