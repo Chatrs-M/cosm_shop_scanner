@@ -34,8 +34,10 @@ Quagga.start();document.getElementById('result').innerText="请将条码置于�
 Quagga.onDetected(res=>{const code=res.codeResult.code;if(code&&code!==lastCode){lastCode=code;document.getElementById('result').innerText="识别成功："+code;
 const beep=document.getElementById("beep-sound");beep.currentTime=0;beep.play().catch(()=>{});openAppSheet(view,code);}});}
 function openAppSheet(view,code){
-const encoded=encodeURIComponent(`{"Code":"${code}"}`);const appURL=`appsheet://app?appId=${appId}#view=${view}&defaults=${encoded}`;
-const webURL=`https://www.appsheet.com/start/${appId}#view=${view}&defaults=${encoded}`;
+// 改成直接跳转到符合 Code 的那条记录
+const filter = encodeURIComponent(`FILTER("Procurement", [Code] = "${code}")`);
+const appURL = `appsheet://app?appId=${appId}#view=${view}&at=${filter}`;
+const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&at=${filter}`;
 const iframe=document.createElement("iframe");iframe.style.display="none";iframe.src=appURL;document.body.appendChild(iframe);
 setTimeout(()=>window.location.href=webURL,1500);}
 startScanner();
