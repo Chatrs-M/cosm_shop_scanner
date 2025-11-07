@@ -74,28 +74,46 @@
 
 <script>
 const appId = "c2893944-c589-4385-833c-17a86cc10826";
-const view = "Procurment_Detail"; // 目标视图
-const jsonURL = "https://raw.githubusercontent.com/Chatrs-M/cosm_shop_scanner/refs/heads/main/barcodeMap.json"; // ← 修改为你实际的 GitHub JSON 文件地址
+const view = "Procurment_Detail";
+const jsonURL = "https://raw.githubusercontent.com/Chatrs-M/cosm_shop_scanner/refs/heads/main/barcodeMap.json";
+
 let barcodeMap = {};
 let lastCode = "";
 
-// 初始化扫码器
-function startScanner() {
+async function startScanner() {
+  const resultEl = document.getElementById('result');
+
+  // ✅ 先检测摄像头权限
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    // 停止临时 stream（只是为了获取权限）
+    stream.getTracks().forEach(track => track.stop());
+  } catch (err) {
+    resultEl.innerText = "无法访问摄像头权限，请在浏览器设置中允许。";
+    console.error("Camera permission error:", err);
+    return;
+  }
+
+  // ✅ 再启动 Quagga
   Quagga.init({
     inputStream: {
+      name: "Live",
       type: "LiveStream",
       target: document.querySelector("#scanner-container"),
       constraints: { facingMode: "environment" }
     },
-    decoder: { readers: ["code_128_reader", "ean_reader", "ean_13_reader"] }
+    decoder: {
+      readers: ["code_128_reader", "ean_reader", "ean_13_reader"]
+    },
+    locate: true
   }, err => {
     if (err) {
-      document.getElementById('result').innerText = "无法启动摄像头";
       console.error(err);
+      resultEl.innerText = "无法启动摄像头：" + err.message;
       return;
     }
     Quagga.start();
-    document.getElementById('result').innerText = "请将条码置于粉色框内扫描...";
+    resultEl.innerText = "请将条码置于粉色框内扫描...";
   });
 
   Quagga.onDetected(res => {
@@ -107,35 +125,35 @@ function startScanner() {
   });
 }
 
-// 扫描到条码后的处理逻辑
+// ✅ 处理识别结果
 async function handleDetectedCode(code) {
-  document.getElementById('result').innerText = "识别成功：" + code;
+  const resultEl = document.getElementById('result');
+  resultEl.innerText = "识别成功：" + code;
+
   const beep = document.getElementById("beep-sound");
   beep.currentTime = 0;
   beep.play().catch(()=>{});
 
-  // 读取 JSON 映射文件
   if (Object.keys(barcodeMap).length === 0) {
     try {
-      const res = await fetch(jsonURL + "?t=" + Date.now()); // 防止缓存
+      const res = await fetch(jsonURL + "?t=" + Date.now());
       barcodeMap = await res.json();
     } catch (e) {
-      document.getElementById('result').innerText = "无法加载映射文件";
+      resultEl.innerText = "无法加载映射文件";
       return;
     }
   }
 
-  // 查找对应的 row key
   const rowKey = barcodeMap[code];
   if (rowKey) {
-    document.getElementById('result').innerText = "匹配成功，打开详情...";
+    resultEl.innerText = "匹配成功，打开详情...";
     openAppSheet(rowKey);
   } else {
-    document.getElementById('result').innerText = "未找到匹配的条码：" + code;
+    resultEl.innerText = "未找到匹配的条码：" + code;
   }
 }
 
-// 打开 AppSheet 指定 row 的 detail view
+// ✅ 打开 AppSheet 指定行的 Detail view
 function openAppSheet(rowKey) {
   const appURL = `appsheet://app?appId=${appId}#view=${view}&row=${rowKey}`;
   const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&row=${rowKey}`;
