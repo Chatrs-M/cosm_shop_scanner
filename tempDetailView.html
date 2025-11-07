@@ -5,111 +5,115 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cosmetics Scanner - 查看详情</title>
 <meta name="robots" content="noindex, nofollow">
-<!-- 使用原来稳定的 Quagga2 CDN -->
-<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@0.0.14/dist/quagga.min.js"></script>
+<script src="https://unpkg.com/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
 <style>
-  body{margin:0;background:linear-gradient(180deg,#fff5f8 0%,#ffeaf1 100%);color:#d63384;
-  font-family:"Segoe UI","Microsoft YaHei",sans-serif;text-align:center;}
+  body{margin:0;background:linear-gradient(180deg,#fff5f8 0%,#ffeaf1 100%);
+  color:#d63384;font-family:"Segoe UI","Microsoft YaHei",sans-serif;text-align:center;}
   h2{margin-top:16px;color:#d63384;}
   #scanner-container{position:relative;width:90vw;height:45vh;margin:20px auto;
-  border:2px solid rgba(255,105,180,0.4);border-radius:12px;box-shadow:0 0 10px rgba(255,182,193,0.6);overflow:hidden;}
+  border:2px solid rgba(255,105,180,0.4);border-radius:12px;
+  box-shadow:0 0 10px rgba(255,182,193,0.6);overflow:hidden;}
   video{width:100%;height:100%;object-fit:cover;}
   .corner{position:absolute;width:30px;height:30px;border:3px solid #ff69b4;}
   .top-left{top:0;left:0;border-right:none;border-bottom:none;}
   .top-right{top:0;right:0;border-left:none;border-bottom:none;}
   .bottom-left{bottom:0;left:0;border-right:none;border-top:none;}
   .bottom-right{bottom:0;right:0;border-left:none;border-top:none;}
-  .center-line{position:absolute;top:50%;left:0;width:100%;height:2px;background-color:#ff69b4;transform:translateY(-50%);}
+  .center-line{position:absolute;top:50%;left:0;width:100%;height:2px;
+  background-color:#ff69b4;transform:translateY(-50%);}
   #result{font-size:1.3em;margin:20px 0;font-weight:600;}
 </style>
 </head>
 <body>
 <h2>查看详情扫码</h2>
-<div id="scanner-container"><video id="video"></video>
-<div class="corner top-left"></div><div class="corner top-right"></div>
-<div class="corner bottom-left"></div><div class="corner bottom-right"></div>
-<div class="center-line"></div></div>
+<div id="scanner-container">
+  <video id="video" autoplay playsinline></video>
+  <div class="corner top-left"></div>
+  <div class="corner top-right"></div>
+  <div class="corner bottom-left"></div>
+  <div class="corner bottom-right"></div>
+  <div class="center-line"></div>
+</div>
 <div id="result">等待扫描中...</div>
 <audio id="beep-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
 
 <script>
 const appId = "c2893944-c589-4385-833c-17a86cc10826";
-const view = "Procurment_Detail"; // 👈 目标视图
-const jsonURL = "https://raw.githubusercontent.com/Chatrs-M/cosm_shop_scanner/refs/heads/main/barcodeMap.json";
-
-let barcodeMap = {};
+const view = "Procurment_Detail";
 let lastCode = "";
+let barcodeMap = {};
 
-// 启动摄像头扫码
-function startScanner() {
+// 加载 JSON 映射
+fetch("https://raw.githubusercontent.com/Chatrs-M/cosm_shop_scanner/refs/heads/main/barcodeMap.json")
+  .then(r => r.json())
+  .then(data => {
+    barcodeMap = data;
+    console.log("JSON 映射已加载", barcodeMap);
+    startCameraAndScanner();
+  })
+  .catch(err => {
+    document.getElementById("result").innerText = "无法加载条码映射：" + err;
+  });
+
+// 先启动摄像头再启动 Quagga
+async function startCameraAndScanner() {
+  const video = document.getElementById("video");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false
+    });
+    video.srcObject = stream;
+    document.getElementById("result").innerText = "摄像头已启动，准备扫描...";
+    startQuagga(video);
+  } catch (err) {
+    console.error("摄像头启动失败：", err);
+    document.getElementById("result").innerText = "无法启动摄像头：" + err.message;
+  }
+}
+
+function startQuagga(video) {
   Quagga.init({
     inputStream: {
       type: "LiveStream",
-      target: document.querySelector("#scanner-container"),
+      target: video,
       constraints: { facingMode: "environment" }
     },
     decoder: { readers: ["code_128_reader", "ean_reader", "ean_13_reader"] }
   }, err => {
     if (err) {
-      document.getElementById('result').innerText = "无法启动摄像头";
-      console.error(err);
+      console.error("Quagga 初始化错误：", err);
+      document.getElementById("result").innerText = "扫码模块启动失败：" + err.message;
       return;
     }
     Quagga.start();
-    document.getElementById('result').innerText = "请将条码置于粉色框内扫描...";
+    document.getElementById("result").innerText = "请将条码置于粉色框内扫描...";
   });
 
   Quagga.onDetected(res => {
     const code = res.codeResult.code;
     if (code && code !== lastCode) {
       lastCode = code;
-      handleDetectedCode(code);
+      document.getElementById("result").innerText = "识别成功：" + code;
+      document.getElementById("beep-sound").play().catch(()=>{});
+      const rowKey = barcodeMap[code] || code;
+      openAppSheet(view, rowKey);
     }
   });
 }
 
-// 扫描成功后 → 读取 JSON → 查找 rowKey → 打开 AppSheet
-async function handleDetectedCode(code) {
-  document.getElementById('result').innerText = "识别成功：" + code;
-  const beep = document.getElementById("beep-sound");
-  beep.currentTime = 0;
-  beep.play().catch(()=>{});
-
-  // 读取 JSON 仅一次缓存
-  if (Object.keys(barcodeMap).length === 0) {
-    try {
-      const res = await fetch(jsonURL + "?t=" + Date.now()); // 防止缓存
-      barcodeMap = await res.json();
-    } catch (e) {
-      document.getElementById('result').innerText = "无法加载映射文件";
-      console.error(e);
-      return;
-    }
-  }
-
-  const rowKey = barcodeMap[code];
-  if (rowKey) {
-    document.getElementById('result').innerText = "匹配成功，正在打开详情...";
-    openAppSheet(rowKey);
-  } else {
-    document.getElementById('result').innerText = "未找到匹配条码：" + code;
-  }
-}
-
-// 打开 AppSheet 指定 row 的 detail view
-function openAppSheet(rowKey) {
-  const appURL = `appsheet://app?appId=${appId}#view=${view}&row=${rowKey}`;
-  const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&row=${rowKey}`;
+function openAppSheet(view, key) {
+  const encoded = encodeURIComponent(`{"ScanCode":"${key}"}`);
+  const appURL = `appsheet://app?appId=${appId}#view=${view}&defaults=${encoded}`;
+  const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&defaults=${encoded}`;
 
   const iframe = document.createElement("iframe");
   iframe.style.display = "none";
   iframe.src = appURL;
   document.body.appendChild(iframe);
 
-  setTimeout(() => window.location.href = webURL, 800);
+  setTimeout(() => window.location.href = webURL, 1000);
 }
-
-startScanner();
 </script>
 </body>
 </html>
