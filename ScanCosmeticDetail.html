@@ -1,156 +1,97 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Batch Scanner - Open Detail</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Batch Scanner</title>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js"></script>
+<!-- 官方 CDN：确保 GitHub Pages 可用 -->
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
 <style>
-  :root{
-    --pink-bg: #ffeaf1;
-    --pink-light: #fff5f8;
-    --accent: #d63384;
-    --frame: #ff69b4;
-  }
-  body{
-    margin:0;
-    background:linear-gradient(180deg,var(--pink-light),var(--pink-bg));
-    color:var(--accent);
-    text-align:center;
-    font-family:"Segoe UI","Microsoft YaHei",sans-serif;
-  }
-  h2{ margin:14px 0; }
-
-  #scanner-box{
-    position:relative;
-    width:92%;
-    max-width:420px;
-    height:46vh;
-    margin:16px auto;
-    border-radius:14px;
-    overflow:hidden;
-    border:2px solid rgba(255,105,180,0.35);
-    box-shadow:0 6px 18px rgba(255,182,193,0.4);
-    background:#000;
-  }
-
-  #reader{
-    width:100%;
-    height:100%;
-  }
-
-  .corner{
-    position:absolute;width:28px;height:28px;border:3px solid var(--frame);box-sizing:border-box;
-  }
-  .tl{top:8px;left:8px;border-right:none;border-bottom:none;}
-  .tr{top:8px;right:8px;border-left:none;border-bottom:none;}
-  .bl{bottom:8px;left:8px;border-right:none;border-top:none;}
-  .br{bottom:8px;right:8px;border-left:none;border-top:none;}
-
-  .center-line{
-    position:absolute;left:0;top:50%;
-    width:100%;height:2px;background:var(--frame);
-    transform:translateY(-50%);
-  }
-
-  #status{
-    font-size:1.2em;
-    margin:14px 0 8px;
-    font-weight:600;
-  }
-
-  #confirmBtn{
-    background:var(--accent);
-    color:white;
-    padding:12px 20px;
-    border:0;
-    border-radius:10px;
-    font-size:1.05em;
-    font-weight:700;
-    box-shadow:0 4px 8px rgba(214,51,132,0.25);
-  }
-
-  #codeBox{
-    margin-top:10px;
-    font-size:1.3em;
-    font-weight:bold;
-  }
+    body {
+        font-family: sans-serif;
+        margin: 0;
+        padding: 15px;
+        background: #fff;
+    }
+    #reader {
+        width: 100%;
+        max-width: 400px;
+        margin: auto;
+    }
+    #resultBox {
+        margin-top: 20px;
+        padding: 10px;
+        border: 2px solid #888;
+        border-radius: 10px;
+        background: #f8f8f8;
+        font-size: 20px;
+        text-align: center;
+    }
+    button {
+        margin-top: 20px;
+        width: 100%;
+        padding: 15px;
+        font-size: 20px;
+        border: none;
+        border-radius: 8px;
+        background: #4CAF50;
+        color: white;
+    }
 </style>
 </head>
 
 <body>
-<h2>批次扫描（Batch Scanner）</h2>
+<h2>Scan Batch Code</h2>
 
-<div id="scanner-box">
-  <div id="reader"></div>
-  <div class="corner tl"></div>
-  <div class="corner tr"></div>
-  <div class="corner bl"></div>
-  <div class="corner br"></div>
-  <div class="center-line"></div>
-</div>
+<div id="reader"></div>
 
-<div id="status">扫描中…</div>
-<div id="codeBox">尚未识别</div>
+<div id="resultBox">Waiting for scan...</div>
 
-<button id="confirmBtn">确认跳转到 AppSheet</button>
-
-<audio id="beep" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+<button id="confirmBtn">确认并打开 AppSheet</button>
 
 <script>
+let scannedCode = "";
 const appId = "c2893944-c589-4385-833c-17a86cc10826";
-const targetView = "Batchs_Detail";
+const viewName = "Batches_Detail";
 
-let lastCode = "";   // 当前已扫描到的编码
-let html5Scanner = null;
+// 初始化扫描器
+function startScanner() {
+    const html5QrCode = new Html5Qrcode("reader");
 
-// 初始化扫描
-function startScanner(){
-  const scanner = new Html5Qrcode("reader");
+    const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 }
+    };
 
-  scanner.start(
-    { facingMode:"environment" },
-    { fps:12, qrbox:{width:300,height:80} },
-    decoded => {
-      lastCode = decoded;
-      document.getElementById("codeBox").innerText = decoded;
-      document.getElementById("status").innerText = "已识别，请确认";
-      document.getElementById("beep").play().catch(()=>{});
-    },
-    /* onScanFailure: 忽略错误 */ 
-    ()=>{}
-  ).catch(err=>{
-    document.getElementById("status").innerText = "摄像头启动失败";
-  });
-
-  html5Scanner = scanner;
+    html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+            scannedCode = decodedText.trim();
+            document.getElementById("resultBox").innerText = "Scanned: " + scannedCode;
+        },
+        (errorMessage) => {}
+    ).catch(err => {
+        document.getElementById("resultBox").innerText =
+            "摄像头启动失败：" + err;
+    });
 }
 
-// 确认跳转到 AppSheet Detail
-document.getElementById("confirmBtn").onclick = function(){
-  if(!lastCode){
-    alert("还未扫描到有效条码");
-    return;
-  }
+// 按下确认按钮 → 跳 AppSheet Detail
+document.getElementById("confirmBtn").onclick = function () {
+    if (!scannedCode) {
+        alert("请先扫描条码！");
+        return;
+    }
 
-  const rowKey = encodeURIComponent(lastCode);
-  const appUrl = `appsheet://app?appId=${appId}#view=${targetView}&row=${rowKey}`;
-  const webUrl = `https://www.appsheet.com/start/${appId}#view=${targetView}&row=${rowKey}`;
-
-  // 尝试打开 AppSheet APP
-  const iframe = document.createElement("iframe");
-  iframe.style.display="none";
-  iframe.src = appUrl;
-  document.body.appendChild(iframe);
-
-  // 1 秒后自动 fallback 到网页
-  setTimeout(()=> window.location.href = webUrl, 900);
+    const url = `https://www.appsheet.com/start/${appId}#control=${viewName}&row=${scannedCode}`;
+    window.location.href = url;
 };
 
+// 立即启动摄像头
 startScanner();
 </script>
-
 </body>
 </html>
