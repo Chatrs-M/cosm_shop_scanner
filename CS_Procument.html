@@ -75,7 +75,7 @@
     }
 
     function openAppSheet(view, code) {
-      const encoded = encodeURIComponent(`{"Code":"${code}"}`);
+      const encoded = encodeURIComponent(`{"BarCode":"${code}"}`);
       const appURL = `appsheet://app?appId=${appId}#view=${view}&defaults=${encoded}`;
       const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&defaults=${encoded}`;
       const iframe = document.createElement("iframe"); iframe.style.display="none"; iframe.src=appURL; document.body.appendChild(iframe);
