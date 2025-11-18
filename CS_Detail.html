@@ -66,8 +66,8 @@ function startScanner() {
 function openAppSheet(view, code){
   // 通过 defaults 填写 TempUserInput[ScanCode]
   const encoded = encodeURIComponent(`{"ScanCode":"${BarCode}"}`);
-  const appURL = `appsheet://app?appId=${appId}#view=${view}&defaults=${encoded}`;
-  const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&defaults=${encoded}`;
+  const appURL = `appsheet://app?appId=${appId}#view=${view}&row=${encoded}`;
+  const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&row=${encoded}`;
 
   const iframe = document.createElement("iframe");
   iframe.style.display = "none";
@@ -81,6 +81,7 @@ startScanner();
 </script>
 </body>
 </html>
+
 
 
 
