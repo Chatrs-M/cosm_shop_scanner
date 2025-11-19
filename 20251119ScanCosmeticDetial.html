@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cosmetics Scanner - 销售扫码</title>
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        background: #ffe6f2;
+        font-family: Arial, sans-serif;
+    }
+
+    .header {
+        background: #ff4fa3;
+        padding: 14px;
+        text-align: center;
+        color: white;
+        font-size: 20px;
+        font-weight: bold;
+    }
+
+    .container {
+        padding: 18px;
+    }
+
+    .card {
+        background: white;
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 4px 10px rgba(255, 0, 120, 0.15);
+        margin-bottom: 20px;
+    }
+
+    #preview {
+        width: 100%;
+        border-radius: 14px;
+        background: #000;
+    }
+
+    button {
+        width: 100%;
+        padding: 14px;
+        border-radius: 14px;
+        font-size: 18px;
+        border: none;
+        margin-top: 12px;
+        cursor: pointer;
+        font-weight: bold;
+        background: #ff4fa3;
+        color: white;
+        box-shadow: 0 2px 6px rgba(255, 0, 120, 0.25);
+    }
+
+    button:active {
+        opacity: 0.7;
+    }
+
+    #flashBtn.off {
+        background: #bbbbbb;
+    }
+
+    .status {
+        margin-top: 16px;
+        color: #ff4fa3;
+        font-size: 16px;
+        font-weight: bold;
+        text-align: center;
+    }
+
+</style>
+</head>
+<body>
+
+<div class="header">Cosmetics 销售扫码</div>
+
+<div class="container">
+
+    <!-- 相机画面 -->
+    <div class="card">
+        <video id="preview" autoplay playsinline></video>
+        <button id="flashBtn" class="off">🔦 闪光灯（关闭）</button>
+        <button id="startBtn">▶ 开始扫描</button>
+    </div>
+
+    <div class="status" id="statusText">状态：等待开始扫描…</div>
+
+</div>
+
+<!-- 提示音 -->
+<audio id="beepSound" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA="></audio>
+
+<script src="https://unpkg.com/@zxing/library@0.19.1"></script>
+
+<script>
+let codeReader = new ZXing.BrowserMultiFormatReader();
+let lastScanTime = 0;
+let stream = null;
+let track = null;
+let flashOn = false;
+
+const statusText = msg => document.getElementById("statusText").innerText = "状态：" + msg;
+const beep = () => document.getElementById("beepSound").play().catch(()=>{});
+
+document.getElementById("startBtn").onclick = async () => {
+    try {
+        statusText("正在请求相机权限…");
+
+        // Edge / Firefox 兼容摄像头选择补丁
+        const constraints = {
+            video: {
+                facingMode: { ideal: "environment" },
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            }
+        };
+
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        document.getElementById("preview").srcObject = stream;
+
+        track = stream.getVideoTracks()[0];
+
+        statusText("摄像头开启成功，正在扫描…");
+
+        startDecodingLoop();
+
+    } catch (e) {
+        statusText("相机错误：" + e.message);
+    }
+};
+
+// 扫描循环（限制 30 秒）
+function startDecodingLoop() {
+    setInterval(async () => {
+
+        if (!track) return;
+
+        const now = Date.now();
+        if (now - lastScanTime < 30000) return;
+
+        try {
+            const result = await codeReader.decodeOnceFromVideoElement(
+                document.getElementById("preview")
+            );
+
+            if (result && result.text) {
+                lastScanTime = now;
+                beep();
+                statusText("识别成功：" + result.text);
+
+                // 跳转 AppSheet 详情页
+                window.location.href = result.text;
+            }
+
+        } catch (err) {
+            // 忽略 decode error，避免刷屏
+        }
+
+    }, 1200);
+}
+
+
+// 闪光灯开关
+document.getElementById("flashBtn").onclick = async () => {
+    if (!track) return alert("请先开启扫描");
+
+    try {
+        const capabilities = track.getCapabilities();
+        if (!capabilities.torch) {
+            alert("该设备不支持闪光灯");
+            return;
+        }
+
+        flashOn = !flashOn;
+        await track.applyConstraints({ advanced: [{ torch: flashOn }] });
+
+        const btn = document.getElementById("flashBtn");
+        if (flashOn) {
+            btn.classList.remove("off");
+            btn.innerText = "🔦 闪光灯（开启）";
+        } else {
+            btn.classList.add("off");
+            btn.innerText = "🔦 闪光灯（关闭）";
+        }
+
+    } catch (e) {
+        alert("闪光灯错误：" + e.message);
+    }
+};
+
+
+// 全局错误捕捉
+window.addEventListener("error", e => {
+    statusText("错误：" + e.message);
+});
+window.addEventListener("unhandledrejection", e => {
+    statusText("Promise 错误：" + e.reason);
+});
+</script>
+
+</body>
+</html>
