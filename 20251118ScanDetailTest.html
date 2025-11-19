@@ -3,258 +3,129 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cosmetics Scanner - 批次详情</title>
-<meta name="robots" content="noindex, nofollow">
-<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
-
+<title>Cosmetics Scanner</title>
 <style>
-body {
-    margin: 0;
-    background: linear-gradient(180deg, #fff5f8 0%, #ffeaf1 100%);
-    color: #d63384;
-    font-family: "Segoe UI","Microsoft YaHei",sans-serif;
-    text-align: center;
-}
-h2 {
-    margin-top: 16px;
-    color: #d63384;
-}
-#scanner-container {
-    position: relative;
-    width: 90vw;
-    height: 45vh;
-    margin: 20px auto;
-    border: 2px solid rgba(255,105,180,0.4);
-    border-radius: 12px;
-    box-shadow: 0 0 10px rgba(255,182,193,0.6);
-    overflow: hidden;
-}
-video { width: 100%; height: 100%; object-fit: cover; }
-
-.corner {
-    position: absolute;
-    width: 30px;
-    height: 30px;
-    border: 3px solid #ff69b4;
-}
-.top-left { top: 0; left: 0; border-right: none; border-bottom: none; }
-.top-right { top: 0; right: 0; border-left: none; border-bottom: none; }
-.bottom-left { bottom: 0; left: 0; border-right: none; border-top: none; }
-.bottom-right { bottom: 0; right: 0; border-left: none; border-top: none; }
-
-.center-line {
-    position: absolute;
-    top: 50%; left: 0;
-    width: 100%; height: 2px;
-    background-color: #ff69b4;
-    transform: translateY(-50%);
-}
-
-#result {
-    font-size: 1.3em;
-    margin: 20px 0;
-    font-weight: 600;
-}
-
-button {
-    padding: 10px 20px;
-    margin: 10px;
-    border: none;
-    border-radius: 8px;
-    background-color: #ff69b4;
-    color: white;
-    font-size: 1em;
-}
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    video { width: 100%; max-width: 400px; border: 2px solid #ccc; border-radius: 10px; }
+    button { padding: 10px 16px; margin: 10px 5px; font-size: 16px; }
+    #msg { margin-top: 15px; color: #d00; font-weight: bold; }
 </style>
 </head>
-
 <body>
-<h2>扫码进入批次详情页</h2>
 
-<div id="scanner-container">
-    <video id="video"></video>
-    <div class="corner top-left"></div>
-    <div class="corner top-right"></div>
-    <div class="corner bottom-left"></div>
-    <div class="corner bottom-right"></div>
-    <div class="center-line"></div>
-</div>
+<h2>商品扫码系统</h2>
 
-<button id="flashBtn">开启闪光灯</button>
+<video id="preview" autoplay playsinline></video>
 
-<div id="result">等待扫描中...</div>
+<br>
+<button id="btnScan">扫描二维码</button>
+<button id="btnFlash">开灯</button>
 
-<audio id="beep-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+<div id="msg"></div>
 
+<!-- 内置提示音（base64） -->
+<audio id="beep">
+    <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=" type="audio/wav">
+</audio>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
 <script>
-const appId = "c2893944-c589-4385-833c-17a86cc10826";
-const view = "Batchs_Detail";     // ← 打开详情页
-const keyName = "BarCode";        // ← 用 BarCode 作为 Row Key
-
-let lastScanTime = 0;
-const SCAN_INTERVAL = 30000; // ← 限制 30 秒触发一次扫描
+// --- 摄像头相关 ---
+let video = document.getElementById("preview");
+let btnScan = document.getElementById("btnScan");
+let btnFlash = document.getElementById("btnFlash");
+let msgBox = document.getElementById("msg");
+let beep = document.getElementById("beep");
 
 let stream = null;
 let track = null;
-let flashOn = false;
+let flashOn = false;       // 默认关闭闪光灯
+let lastDecodeTime = 0;    // 30 秒扫描一次
 
-async function checkCameraPermission() {
+async function startCamera() {
     try {
-        await navigator.mediaDevices.getUserMedia({ video: true });
-    } catch (e) {
-        alert("请开启摄像头权限才能进行扫码！");
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment" }
+        });
+        video.srcObject = stream;
+        track = stream.getVideoTracks()[0];
+        msgBox.textContent = "摄像头已启动";
+    } catch (err) {
+        msgBox.textContent = "无法使用摄像头: " + err.message;
     }
 }
+startCamera();
 
-// 启动扫码
-function startScanner() {
-    checkCameraPermission();
+// --- 闪光灯开关 ---
+async function toggleFlash() {
+    if (!track) return;
 
-    Quagga.init({
-        inputStream: {
-            type: "LiveStream",
-            target: document.querySelector("#scanner-container"),
-            constraints: {
-                facingMode: "environment",
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                torch: false
-            }
-        },
-        locator: {
-            patchSize: "medium",
-            halfSample: true,
-        },
-        decoder: {
-            readers: ["code_128_reader"],
-        },
-        locate: true,
-        numOfWorkers: 4,
-        frequency: 10
-    }, err => {
-        if (err) {
-            console.error("Quagga 初始化失败：", err);
-            document.getElementById("result").innerText = "无法启动摄像头";
+    const capabilities = track.getCapabilities();
+    if (!capabilities.torch) {
+        msgBox.textContent = "此设备不支持闪光灯";
+        return;
+    }
+
+    flashOn = !flashOn;
+    try {
+        await track.applyConstraints({
+            advanced: [{ torch: flashOn }]
+        });
+        btnFlash.textContent = flashOn ? "关灯" : "开灯";
+    } catch (err) {
+        msgBox.textContent = "闪光灯操作失败: " + err.message;
+    }
+}
+btnFlash.onclick = toggleFlash;
+
+// --- 扫描二维码 ---
+btnScan.onclick = async () => {
+    const now = Date.now();
+
+    // 限制 30 秒扫描一次
+    if (now - lastDecodeTime < 30000) {
+        msgBox.textContent = "请等待 30 秒后再扫描。";
+        return;
+    }
+
+    msgBox.textContent = "解析中，请稍候…";
+
+    try {
+        // 抓取一帧画面
+        let canvas = document.createElement("canvas");
+        let ctx = canvas.getContext("2d");
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let qr = jsQR(imageData.data, canvas.width, canvas.height);
+
+        if (!qr) {
+            msgBox.textContent = "无法识别二维码，请调整光线或距离";
             return;
         }
 
-        try {
-            Quagga.start();
-            document.getElementById("result").innerText = "请将条码置于粉色框内扫描...";
-            initFlashControl(); // 获取 videotrack 以控制闪光灯
-        } catch (e) {
-            console.error("Quagga 启动错误：", e);
-        }
-    });
+        lastDecodeTime = now;
 
-    // 捕捉检测事件
-    Quagga.onDetected(res => {
-        const now = Date.now();
-        if (now - lastScanTime < SCAN_INTERVAL) return; // 30 秒限制
+        let code = qr.data.trim();
+        msgBox.textContent = "解析成功：" + code;
 
-        lastScanTime = now;
+        // --- 播放提示音 ---
+        beep.currentTime = 0;
+        beep.play().catch(() => {});
 
-        try {
-            const code = res.codeResult.code;
-            if (!code) return;
+        // --- 跳转至 AppSheet 详情页 ---
+        window.location.href =
+            "https://www.appsheet.com/start/YOUR_APP_ID#control=Detail&row=" +
+            encodeURIComponent(code);
 
-            document.getElementById("result").innerText = "识别成功：" + code;
-
-            const beep = document.getElementById("beep-sound");
-            beep.currentTime = 0;
-            beep.play().catch(()=>{});
-
-            openDetailView(code);
-
-            stopFlash(); // 扫描后自动关闭闪光灯
-
-        } catch (e) {
-            console.error("解析条码错误：", e);
-        }
-    });
-
-    // 解析失败的捕捉
-    Quagga.onProcessed(result => {
-        if (!result || !result.codeResult) {
-            console.debug("解析失败一次");
-        }
-    });
-}
-
-// AppSheet 跳转逻辑（含错误捕捉）
-function openDetailView(code) {
-    const defaults = encodeURIComponent(`{"${keyName}":"${code}"}`);
-
-    const appURL = `appsheet://app?appId=${appId}#view=${view}&row=${code}`;
-    const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&row=${code}`;
-
-    try {
-        const iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        iframe.src = appURL;
-        document.body.appendChild(iframe);
-
-        setTimeout(() => window.location.href = webURL, 1500);
-
-    } catch (e) {
-        console.error("跳转失败，改为浏览器模式", e);
-        window.location.href = webURL;
+    } catch (err) {
+        msgBox.textContent = "解析时发生错误: " + err.message;
     }
-}
-
-// 初始化闪光灯控制
-async function initFlashControl() {
-    try {
-        stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment", torch: true }
-        });
-
-        track = stream.getVideoTracks()[0];
-
-        // 检查是否支持闪光灯
-        if (!track.getCapabilities().torch) {
-            document.getElementById("flashBtn").style.display = "none";
-        }
-    } catch (e) {
-        console.warn("无法获取闪光灯控制权限：", e);
-        document.getElementById("flashBtn").style.display = "none";
-    }
-}
-
-// 打开闪光灯
-function startFlash() {
-    if (!track) return;
-
-    try {
-        track.applyConstraints({ advanced: [{ torch: true }] });
-        flashOn = true;
-        document.getElementById("flashBtn").innerText = "关闭闪光灯";
-    } catch (e) {
-        console.error("开启闪光灯失败：", e);
-    }
-}
-
-// 关闭闪光灯
-function stopFlash() {
-    if (!track) return;
-
-    try {
-        track.applyConstraints({ advanced: [{ torch: false }] });
-        flashOn = false;
-        document.getElementById("flashBtn").innerText = "开启闪光灯";
-    } catch (e) {
-        console.error("关闭闪光灯失败：", e);
-    }
-}
-
-// 按钮控制
-document.getElementById("flashBtn").addEventListener("click", () => {
-    if (flashOn) stopFlash();
-    else startFlash();
-});
-
-// 启动
-startScanner();
+};
 </script>
 
 </body>
