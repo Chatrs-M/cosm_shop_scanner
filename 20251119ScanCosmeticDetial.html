@@ -3,201 +3,197 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cosmetics Scanner - 销售扫码</title>
+<title>Cosmetics Scanner - 批次详情</title>
+<meta name="robots" content="noindex, nofollow">
+<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
 
 <style>
-    body {
-        margin: 0;
-        padding: 0;
-        background: #ffe6f2;
-        font-family: Arial, sans-serif;
-    }
+body {
+    margin: 0;
+    background: linear-gradient(180deg, #fff5f8 0%, #ffeaf1 100%);
+    color: #d63384;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    text-align: center;
+}
+h2 { margin-top: 16px; color: #d63384; }
 
-    .header {
-        background: #ff4fa3;
-        padding: 14px;
-        text-align: center;
-        color: white;
-        font-size: 20px;
-        font-weight: bold;
-    }
-
-    .container {
-        padding: 18px;
-    }
-
-    .card {
-        background: white;
-        border-radius: 16px;
-        padding: 18px;
-        box-shadow: 0 4px 10px rgba(255, 0, 120, 0.15);
-        margin-bottom: 20px;
-    }
-
-    #preview {
-        width: 100%;
-        border-radius: 14px;
-        background: #000;
-    }
-
-    button {
-        width: 100%;
-        padding: 14px;
-        border-radius: 14px;
-        font-size: 18px;
-        border: none;
-        margin-top: 12px;
-        cursor: pointer;
-        font-weight: bold;
-        background: #ff4fa3;
-        color: white;
-        box-shadow: 0 2px 6px rgba(255, 0, 120, 0.25);
-    }
-
-    button:active {
-        opacity: 0.7;
-    }
-
-    #flashBtn.off {
-        background: #bbbbbb;
-    }
-
-    .status {
-        margin-top: 16px;
-        color: #ff4fa3;
-        font-size: 16px;
-        font-weight: bold;
-        text-align: center;
-    }
-
-</style>
-</head>
-<body>
-
-<div class="header">Cosmetics 销售扫码</div>
-
-<div class="container">
-
-    <!-- 相机画面 -->
-    <div class="card">
-        <video id="preview" autoplay playsinline></video>
-        <button id="flashBtn" class="off">🔦 闪光灯（关闭）</button>
-        <button id="startBtn">▶ 开始扫描</button>
-    </div>
-
-    <div class="status" id="statusText">状态：等待开始扫描…</div>
-
-</div>
-
-<!-- 提示音 -->
-<audio id="beepSound" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA="></audio>
-
-<script src="https://unpkg.com/@zxing/library@0.19.1"></script>
-
-<script>
-let codeReader = new ZXing.BrowserMultiFormatReader();
-let lastScanTime = 0;
-let stream = null;
-let track = null;
-let flashOn = false;
-
-const statusText = msg => document.getElementById("statusText").innerText = "状态：" + msg;
-const beep = () => document.getElementById("beepSound").play().catch(()=>{});
-
-document.getElementById("startBtn").onclick = async () => {
-    try {
-        statusText("正在请求相机权限…");
-
-        // Edge / Firefox 兼容摄像头选择补丁
-        const constraints = {
-            video: {
-                facingMode: { ideal: "environment" },
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            }
-        };
-
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        document.getElementById("preview").srcObject = stream;
-
-        track = stream.getVideoTracks()[0];
-
-        statusText("摄像头开启成功，正在扫描…");
-
-        startDecodingLoop();
-
-    } catch (e) {
-        statusText("相机错误：" + e.message);
-    }
-};
-
-// 扫描循环（限制 30 秒）
-function startDecodingLoop() {
-    setInterval(async () => {
-
-        if (!track) return;
-
-        const now = Date.now();
-        if (now - lastScanTime < 30000) return;
-
-        try {
-            const result = await codeReader.decodeOnceFromVideoElement(
-                document.getElementById("preview")
-            );
-
-            if (result && result.text) {
-                lastScanTime = now;
-                beep();
-                statusText("识别成功：" + result.text);
-
-                // 跳转 AppSheet 详情页
-                window.location.href = result.text;
-            }
-
-        } catch (err) {
-            // 忽略 decode error，避免刷屏
-        }
-
-    }, 1200);
+#scanner-container {
+    position: relative;
+    width: 90vw;
+    height: 45vh;
+    margin: 20px auto;
+    border: 2px solid rgba(255,105,180,0.4);
+    border-radius: 12px;
+    box-shadow: 0 0 10px rgba(255,182,193,0.6);
+    overflow: hidden;
 }
 
+video { width: 100%; height: 100%; object-fit: cover; }
+
+.corner {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border: 3px solid #ff69b4;
+}
+.top-left { top: 0; left: 0; border-right: none; border-bottom: none; }
+.top-right { top: 0; right: 0; border-left: none; border-bottom: none; }
+.bottom-left { bottom: 0; left: 0; border-right: none; border-top: none; }
+.bottom-right { bottom: 0; right: 0; border-left: none; border-top: none; }
+
+.center-line {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background-color: #ff69b4;
+    transform: translateY(-50%);
+}
+
+#result {
+    font-size: 1.3em;
+    margin: 20px 0;
+    font-weight: 600;
+}
+
+/* 闪光灯按钮 */
+#flash-btn {
+    padding: 10px 18px;
+    font-size: 16px;
+    margin-top: -10px;
+    color: white;
+    background: #d63384;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 3px 6px rgba(214, 51, 132, 0.3);
+}
+</style>
+</head>
+
+<body>
+
+<h2>批次详情扫码</h2>
+
+<button id="flash-btn">🔦 闪光灯（关闭）</button>
+
+<div id="scanner-container">
+    <video id="video"></video>
+    <div class="corner top-left"></div><div class="corner top-right"></div>
+    <div class="corner bottom-left"></div><div class="corner bottom-right"></div>
+    <div class="center-line"></div>
+</div>
+
+<div id="result">等待扫描中...</div>
+
+<audio id="beep-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+
+<script>
+const appId = "c2893944-c589-4385-833c-17a86cc10826";
+const view = "Batchs_Detail";  
+let lastScanTime = 0;  // 30秒间隔控制
+let track = null;      // camera track for flashlight
+let flashlightOn = false;
+
+function safeLog(msg) {
+    console.log("[Scanner]", msg);
+}
 
 // 闪光灯开关
-document.getElementById("flashBtn").onclick = async () => {
-    if (!track) return alert("请先开启扫描");
+document.getElementById("flash-btn").onclick = async () => {
+    if (!track) return;
 
-    try {
-        const capabilities = track.getCapabilities();
-        if (!capabilities.torch) {
-            alert("该设备不支持闪光灯");
+    const capabilities = track.getCapabilities();
+    if (!capabilities.torch) {
+        alert("此设备不支持闪光灯");
+        return;
+    }
+
+    flashlightOn = !flashlightOn;
+    await track.applyConstraints({ advanced: [{ torch: flashlightOn }] });
+
+    document.getElementById("flash-btn").innerText =
+        flashlightOn ? "🔦 闪光灯（开启）" : "🔦 闪光灯（关闭）";
+};
+
+// 开始扫描
+function startScanner() {
+
+    // 摄像头兼容补丁（Edge / Firefox）
+    const constraints = {
+        facingMode: "environment",
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+    };
+
+    Quagga.init({
+        inputStream: {
+            type: "LiveStream",
+            target: document.querySelector("#scanner-container"),
+            constraints
+        },
+        decoder: { readers: ["code_128_reader"] },
+        locate: true   // 提升识别稳定性
+    }, err => {
+        if (err) {
+            safeLog("Init Error: " + err);
+            document.getElementById('result').innerText = "无法启动摄像头";
             return;
         }
 
-        flashOn = !flashOn;
-        await track.applyConstraints({ advanced: [{ torch: flashOn }] });
+        // 取得 video track 用于闪光灯
+        const video = document.querySelector("video");
+        track = video.srcObject?.getVideoTracks()[0];
 
-        const btn = document.getElementById("flashBtn");
-        if (flashOn) {
-            btn.classList.remove("off");
-            btn.innerText = "🔦 闪光灯（开启）";
-        } else {
-            btn.classList.add("off");
-            btn.innerText = "🔦 闪光灯（关闭）";
+        Quagga.start();
+        document.getElementById('result').innerText = "请将条码置于粉色框内扫描...";
+    });
+
+    Quagga.onProcessed(result => {
+        // 监控异常，但不打断扫描
+        if (result && result.codeResult === null) safeLog("Decode failed (but continuing)");
+    });
+
+    Quagga.onDetected(res => {
+        const now = Date.now();
+
+        if (now - lastScanTime < 30000) {
+            safeLog("Ignored (30s limit)");
+            return;
         }
 
-    } catch (e) {
-        alert("闪光灯错误：" + e.message);
-    }
-};
+        const code = res.codeResult.code;
+        if (!code) return;
 
+        lastScanTime = now;
+        handleScanSuccess(code);
+    });
+}
 
-// 全局错误捕捉
-window.addEventListener("error", e => {
-    statusText("错误：" + e.message);
-});
-window.addEventListener("unhandledrejection", e => {
-    statusText("Promise 错误：" + e.reason);
-});
+function handleScanSuccess(code) {
+    document.getElementById('result').innerText = "识别成功：" + code;
+
+    const beep = document.getElementById("beep-sound");
+    beep.currentTime = 0;
+    beep.play().catch(()=>{});
+
+    openDetailView(code);
+}
+
+function openDetailView(code) {
+
+    const appURL = `appsheet://app?appId=${appId}#view=${view}&row=${encodeURIComponent(code)}`;
+    const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&row=${encodeURIComponent(code)}`;
+
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    iframe.src = appURL;
+    document.body.appendChild(iframe);
+
+    setTimeout(() => window.location.href = webURL, 1500);
+}
+
+startScanner();
 </script>
 
 </body>
