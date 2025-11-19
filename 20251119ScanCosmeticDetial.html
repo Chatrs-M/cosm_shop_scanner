@@ -75,8 +75,6 @@ video { width: 100%; height: 100%; object-fit: cover; }
 
 <h2>批次详情扫码</h2>
 
-<button id="flash-btn">🔦 闪光灯（关闭）</button>
-
 <div id="scanner-container">
     <video id="video"></video>
     <div class="corner top-left"></div><div class="corner top-right"></div>
@@ -85,6 +83,8 @@ video { width: 100%; height: 100%; object-fit: cover; }
 </div>
 
 <div id="result">等待扫描中...</div>
+
+<button id="flash-btn">🔦 闪光灯（关闭）</button>
 
 <audio id="beep-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
 
@@ -198,3 +198,4 @@ startScanner();
 
 </body>
 </html>
+
