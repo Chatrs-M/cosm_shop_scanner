@@ -6,9 +6,14 @@
 <title>Cosmetics Scanner - 批次详情</title>
 <meta name="robots" content="noindex, nofollow">
 
+<!-- Quagga -->
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+
+<!-- Cropper -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.css">
 <script src="https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js"></script>
+
+<!-- ZXing -->
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
 
 <style>
@@ -37,9 +42,31 @@ video{width:100%;height:100%;object-fit:cover;}
 .bottom-left{bottom:0;left:0;border-right:none;border-top:none;}
 .bottom-right{bottom:0;right:0;border-left:none;border-top:none;}
 
-#image-layer{display:none;}
-#image-wrapper{width:90vw;max-width:420px;margin:10px auto;}
-#scan-image{width:100%;border-radius:12px;}
+#image-layer{
+    display:none;
+}
+
+#image-wrapper{
+    width:90vw;
+    max-width:420px;
+    margin:10px auto;
+    position:relative;   /* ⭐关键：Cropper 必须 */
+}
+
+#scan-image{
+    width:100%;
+    display:block;
+    border-radius:12px;
+}
+
+#image-actions{
+    margin-top:12px;
+    display:flex;
+    justify-content:center;
+    gap:12px;
+    position:relative;
+    z-index:20;
+}
 
 #result{font-weight:600;margin:12px;}
 
@@ -51,21 +78,20 @@ button{
     color:white;
     border:none;
     border-radius:8px;
+    touch-action:manipulation;
 }
 
-#toast {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: rgba(214,51,132,0.9);
-    color: white;
-    padding: 10px 14px;
-    border-radius: 8px;
-    font-weight: bold;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.5s;
-    z-index: 9999;
+#toast{
+    position:fixed;
+    top:16px;
+    right:16px;
+    background:rgba(214,51,132,.9);
+    color:white;
+    padding:8px 12px;
+    border-radius:8px;
+    opacity:0;
+    transition:opacity .4s;
+    z-index:9999;
 }
 </style>
 </head>
@@ -74,18 +100,22 @@ button{
 
 <h2>批次详情扫码</h2>
 
+<!-- 摄像头 -->
 <div id="scanner-container">
     <video></video>
     <div class="corner top-left"></div><div class="corner top-right"></div>
     <div class="corner bottom-left"></div><div class="corner bottom-right"></div>
 </div>
 
+<!-- 相册裁剪 -->
 <div id="image-layer">
     <div id="image-wrapper">
         <img id="scan-image">
     </div>
-    <button id="confirm-image-scan">✔ 识别选中区域</button>
-    <button id="cancel-image-scan">↩ 返回摄像头</button>
+    <div id="image-actions">
+        <button id="confirm-image-scan">✔ 识别选中区域</button>
+        <button id="cancel-image-scan">↩ 返回摄像头</button>
+    </div>
 </div>
 
 <div id="result">等待扫描中...</div>
@@ -97,145 +127,123 @@ button{
 
 <input type="file" id="image-input" accept="image/*" style="display:none">
 <audio id="beep" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
-
 <div id="toast"></div>
 
 <script>
-/* ===== AppSheet 配置 ===== */
+/* ========= AppSheet ========= */
 const appId = "c2893944-c589-4385-833c-17a86cc10826";
 const view = "Batchs_Detail";
 
-/* ===== 调试模式 ===== */
-const DEBUG = new URLSearchParams(location.search).get("debug") === "1";
-const debugStats = {invalidChar:0, invalidLength:0, unstable:0, throttled:0};
-const toastEl = document.getElementById("toast");
-function showToast(msg){
-    toastEl.innerText = msg;
-    toastEl.style.opacity = "1";
-    setTimeout(()=>{toastEl.style.opacity="0";}, 1500);
-}
-function debugLog(reason){
+/* ========= 调试 ========= */
+const DEBUG = new URLSearchParams(location.search).get("debug")==="1";
+const toast = document.getElementById("toast");
+function showToast(t){
     if(!DEBUG) return;
-    debugStats[reason]++;
-    showToast("丢弃原因：" + reason);
-    console.table(debugStats);
+    toast.innerText=t;
+    toast.style.opacity=1;
+    setTimeout(()=>toast.style.opacity=0,1200);
 }
 
-/* ===== 扫码规则 ===== */
-const VALID_CODE_REGEX = /^[A-Z0-9-]+$/;
-const CODE_LENGTH = 8;
-const CONFIRM_COUNT = 2;
-const SCAN_THROTTLE = 30000;
+/* ========= 规则 ========= */
+const REG=/^[A-Z0-9-]+$/;
+const LEN=8, CONFIRM=2, THROTTLE=30000;
+let last=null,count=0,lastOK=0;
 
-let lastCode = null;
-let sameCount = 0;
-let lastAccepted = 0;
+/* ========= DOM ========= */
+const scanner=document.getElementById("scanner-container");
+const imageLayer=document.getElementById("image-layer");
+const scanImage=document.getElementById("scan-image");
+const flashBtn=document.getElementById("flash-btn");
+const galleryBtn=document.getElementById("gallery-btn");
+const imageInput=document.getElementById("image-input");
+const confirmBtn=document.getElementById("confirm-image-scan");
+const cancelBtn=document.getElementById("cancel-image-scan");
+const result=document.getElementById("result");
+const beep=document.getElementById("beep");
 
-/* ===== 元素绑定 ===== */
-const flashBtn = document.getElementById("flash-btn");
-const galleryBtn = document.getElementById("gallery-btn");
-const imageInput = document.getElementById("image-input");
-const confirmImageScan = document.getElementById("confirm-image-scan");
-const cancelImageScan = document.getElementById("cancel-image-scan");
-const scannerContainer = document.getElementById("scanner-container");
-const imageLayer = document.getElementById("image-layer");
-const scanImage = document.getElementById("scan-image");
-const result = document.getElementById("result");
-const beep = document.getElementById("beep");
-
-/* ===== 核心过滤逻辑 ===== */
-function processScanResult(code){
-    if(!VALID_CODE_REGEX.test(code)){ debugLog("invalidChar"); return; }
-    if(code.length !== CODE_LENGTH){ debugLog("invalidLength"); return; }
-    if(code === lastCode){ sameCount++; } else { lastCode = code; sameCount = 1; }
-    if(sameCount < CONFIRM_COUNT){ debugLog("unstable"); return; }
-    const now = Date.now();
-    if(now - lastAccepted < SCAN_THROTTLE){ debugLog("throttled"); return; }
-
-    // 通过验证
-    lastAccepted = now;
-    lastCode = null;
-    sameCount = 0;
-    handleSuccess(code);
+/* ========= 校验 ========= */
+function process(code){
+    if(!REG.test(code)) return showToast("非法字符");
+    if(code.length!==LEN) return showToast("长度不符");
+    if(code===last){count++;}else{last=code;count=1;}
+    if(count<CONFIRM) return showToast("不稳定");
+    if(Date.now()-lastOK<THROTTLE) return showToast("已扫过");
+    lastOK=Date.now(); last=null; count=0;
+    success(code);
 }
 
-/* ===== 实时扫码 ===== */
-let track = null;
-let flash = false;
-
+/* ========= 相机 ========= */
+let track=null,flash=false;
 Quagga.init({
-    inputStream:{
-        name:"Live",
-        type:"LiveStream",
-        target: scannerContainer,
-        constraints:{facingMode:"environment", width:{ideal:1280}, height:{ideal:720}}
-    },
+    inputStream:{type:"LiveStream",target:scanner,constraints:{facingMode:"environment"}},
     decoder:{readers:["code_128_reader"]},
     locate:true
-}, err=>{
-    if(err){ console.error(err); result.innerText="无法启动摄像头"; return; }
-    const videoEl = scannerContainer.querySelector("video");
+},err=>{
+    if(err){result.innerText="无法启动摄像头";return;}
     Quagga.start();
-    if(videoEl.srcObject) track = videoEl.srcObject.getVideoTracks()[0];
+    const v=scanner.querySelector("video");
+    if(v.srcObject) track=v.srcObject.getVideoTracks()[0];
 });
+Quagga.onDetected(r=>r.codeResult&&process(r.codeResult.code));
 
-Quagga.onDetected(res=>{
-    if(res.codeResult?.code) processScanResult(res.codeResult.code);
-});
-
-/* ===== 闪光灯 ===== */
-flashBtn.onclick = async () => {
-    if(!track){ alert("摄像头未就绪"); return; }
-    const cap = track.getCapabilities();
-    if(!cap.torch){ alert("此设备不支持闪光灯"); return; }
-    flash = !flash;
+flashBtn.onclick=async()=>{
+    if(!track) return alert("摄像头未就绪");
+    const c=track.getCapabilities();
+    if(!c.torch) return alert("不支持闪光灯");
+    flash=!flash;
     await track.applyConstraints({advanced:[{torch:flash}]});
-    flashBtn.innerText = flash ? "🔦 闪光灯（开启）" : "🔦 闪光灯（关闭）";
+    flashBtn.innerText=flash?"🔦 闪光灯（开启）":"🔦 闪光灯（关闭）";
 };
 
-/* ===== 相册扫码 ===== */
-let cropper = null;
-const reader = new ZXing.BrowserBarcodeReader();
+/* ========= 相册 ========= */
+let cropper=null;
+const reader=new ZXing.BrowserBarcodeReader();
 
-galleryBtn.onclick = () => imageInput.click();
+galleryBtn.onclick=()=>imageInput.click();
 
-imageInput.onchange = e => {
-    const f = e.target.files[0];
+imageInput.onchange=e=>{
+    const f=e.target.files[0];
     if(!f) return;
-    scannerContainer.style.display="none";
+    scanner.style.display="none";
     imageLayer.style.display="block";
-    scanImage.src = URL.createObjectURL(f);
-    scanImage.onload = () => {
-        const ratio = scanImage.naturalWidth / scanImage.naturalHeight;
-        cropper = new Cropper(scanImage, {viewMode:1, dragMode:"move", autoCropArea:0.8, aspectRatio: ratio>1.2 ? 4/1 : NaN});
+    if(cropper){cropper.destroy();cropper=null;}
+    scanImage.src=URL.createObjectURL(f);
+    scanImage.onload=()=>{
+        requestAnimationFrame(()=>{
+            cropper=new Cropper(scanImage,{
+                viewMode:1,
+                autoCropArea:0.85,
+                dragMode:"move",
+                background:false,
+                responsive:true
+            });
+        });
     };
 };
 
-confirmImageScan.onclick = () => {
+confirmBtn.onclick=()=>{
     if(!cropper) return;
-    const canvas = cropper.getCroppedCanvas();
-    reader.decodeFromImage(undefined, canvas.toDataURL())
-        .then(r => processScanResult(r.text))
+    const c=cropper.getCroppedCanvas();
+    reader.decodeFromImage(undefined,c.toDataURL())
+        .then(r=>process(r.text))
         .catch(()=>result.innerText="未识别到清晰条码");
 };
 
-cancelImageScan.onclick = () => {
+cancelBtn.onclick=()=>{
     cropper?.destroy();
     imageLayer.style.display="none";
-    scannerContainer.style.display="block";
+    scanner.style.display="block";
 };
 
-/* ===== 成功跳转 ===== */
-function handleSuccess(code){
-    beep.currentTime=0; beep.play().catch(()=>{});
-    result.innerText = "识别成功：" + code;
-    const appURL = `appsheet://app?appId=${appId}#view=${view}&row=${encodeURIComponent(code)}`;
-    const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&row=${encodeURIComponent(code)}`;
-    const iframe = document.createElement("iframe");
-    iframe.style.display="none";
-    iframe.src = appURL;
-    document.body.appendChild(iframe);
-    setTimeout(()=>location.href = webURL, 1200);
+/* ========= 成功 ========= */
+function success(code){
+    beep.play().catch(()=>{});
+    result.innerText="识别成功："+code;
+    const app=`appsheet://app?appId=${appId}#view=${view}&row=${encodeURIComponent(code)}`;
+    const web=`https://www.appsheet.com/start/${appId}#view=${view}&row=${encodeURIComponent(code)}`;
+    const i=document.createElement("iframe");
+    i.style.display="none"; i.src=app; document.body.appendChild(i);
+    setTimeout(()=>location.href=web,1200);
 }
 </script>
 
