@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+6<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
@@ -6,15 +6,7 @@
 <title>Cosmetics Scanner - 批次详情</title>
 <meta name="robots" content="noindex, nofollow">
 
-<!-- Quagga -->
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
-
-<!-- Cropper -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.css">
-<script src="https://cdn.jsdelivr.net/npm/cropperjs/dist/cropper.min.js"></script>
-
-<!-- ZXing -->
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
 
 <style>
 body{
@@ -28,57 +20,53 @@ h2{margin-top:16px;}
 
 #scanner-container{
     position:relative;
-    width:90vw;height:45vh;
+    width:90vw;
+    height:45vh;
     margin:20px auto;
     border:2px solid rgba(255,105,180,.4);
     border-radius:12px;
     overflow:hidden;
 }
-video{width:100%;height:100%;object-fit:cover;}
 
-.corner{position:absolute;width:30px;height:30px;border:3px solid #ff69b4;}
+video{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+.corner{
+    position:absolute;
+    width:28px;height:28px;
+    border:3px solid #ff69b4;
+}
 .top-left{top:0;left:0;border-right:none;border-bottom:none;}
 .top-right{top:0;right:0;border-left:none;border-bottom:none;}
 .bottom-left{bottom:0;left:0;border-right:none;border-top:none;}
 .bottom-right{bottom:0;right:0;border-left:none;border-top:none;}
 
-#image-layer{
-    display:none;
-}
-
-#image-wrapper{
-    width:90vw;
-    max-width:420px;
-    margin:10px auto;
-    position:relative;   /* ⭐关键：Cropper 必须 */
-}
-
-#scan-image{
+.center-line{
+    position:absolute;
+    top:50%;
+    left:0;
     width:100%;
-    display:block;
-    border-radius:12px;
+    height:2px;
+    background:#ff69b4;
+    transform:translateY(-50%);
 }
-
-#image-actions{
-    margin-top:12px;
-    display:flex;
-    justify-content:center;
-    gap:12px;
-    position:relative;
-    z-index:20;
-}
-
-#result{font-weight:600;margin:12px;}
 
 button{
     padding:10px 18px;
     font-size:16px;
-    margin:6px;
     background:#d63384;
     color:white;
     border:none;
     border-radius:8px;
-    touch-action:manipulation;
+    margin:6px;
+}
+
+#result{
+    margin:14px;
+    font-weight:600;
 }
 
 #toast{
@@ -100,14 +88,151 @@ button{
 
 <h2>批次详情扫码</h2>
 
-<!-- 摄像头 -->
 <div id="scanner-container">
     <video></video>
-    <div class="corner top-left"></div><div class="corner top-right"></div>
-    <div class="corner bottom-left"></div><div class="corner bottom-right"></div>
+    <div class="corner top-left"></div>
+    <div class="corner top-right"></div>
+    <div class="corner bottom-left"></div>
+    <div class="corner bottom-right"></div>
+    <div class="center-line"></div>
 </div>
 
-<!-- 相册裁剪 -->
+<div id="result">等待扫描中...</div>
+
+<button id="flash-btn">🔦 闪光灯（关闭）</button>
+
+<audio id="beep" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+<div id="toast"></div>
+
+<script>
+/* ===== AppSheet ===== */
+const appId = "c2893944-c589-4385-833c-17a86cc10826";
+const view  = "Batchs_Detail";
+
+/* ===== 调试 ===== */
+const DEBUG = new URLSearchParams(location.search).get("debug")==="1";
+const toast = document.getElementById("toast");
+function showToast(t){
+    if(!DEBUG) return;
+    toast.innerText=t;
+    toast.style.opacity=1;
+    setTimeout(()=>toast.style.opacity=0,1200);
+}
+
+/* ===== 扫码规则 ===== */
+const REG = /^[A-Z0-9-]+$/;
+const LEN = 8;
+const CONFIRM = 2;
+const THROTTLE = 30000;
+
+let lastCode=null;
+let stableCount=0;
+let lastSuccess=0;
+let frozen=false;
+
+/* ===== DOM ===== */
+const scanner = document.getElementById("scanner-container");
+const flashBtn = document.getElementById("flash-btn");
+const result = document.getElementById("result");
+const beep = document.getElementById("beep");
+
+/* ===== 校验 ===== */
+function process(code){
+    if(frozen) return;
+
+    if(!REG.test(code)) return showToast("非法字符");
+    if(code.length !== LEN) return showToast("长度不符");
+
+    if(code === lastCode){
+        stableCount++;
+    }else{
+        lastCode = code;
+        stableCount = 1;
+    }
+
+    if(stableCount < CONFIRM){
+        return showToast("稳定中 " + stableCount + "/" + CONFIRM);
+    }
+
+    if(Date.now() - lastSuccess < THROTTLE){
+        return showToast("节流中");
+    }
+
+    frozen = true;
+    lastSuccess = Date.now();
+    success(code);
+}
+
+/* ===== 摄像头初始化 ===== */
+let track=null, flash=false;
+
+Quagga.init({
+    inputStream:{
+        type:"LiveStream",
+        target:scanner,
+        constraints:{ facingMode:"environment" },
+        area:{   // 👈 限定中间扫描区域
+            top:"35%",
+            right:"15%",
+            left:"15%",
+            bottom:"35%"
+        }
+    },
+    decoder:{ readers:["code_128_reader"] },
+    locate:true
+}, err=>{
+    if(err){
+        result.innerText="无法启动摄像头";
+        return;
+    }
+    Quagga.start();
+
+    const video = scanner.querySelector("video");
+    if(video.srcObject){
+        track = video.srcObject.getVideoTracks()[0];
+    }
+});
+
+/* ===== 扫描监听 ===== */
+Quagga.onDetected(r=>{
+    if(r.codeResult?.code){
+        process(r.codeResult.code);
+    }
+});
+
+/* ===== 闪光灯 ===== */
+flashBtn.onclick = async ()=>{
+    if(!track) return alert("摄像头未就绪");
+    const cap = track.getCapabilities();
+    if(!cap.torch) return alert("该设备不支持闪光灯");
+
+    flash = !flash;
+    await track.applyConstraints({ advanced:[{ torch:flash }] });
+    flashBtn.innerText = flash ? "🔦 闪光灯（开启）" : "🔦 闪光灯（关闭）";
+};
+
+/* ===== 成功处理 ===== */
+function success(code){
+    beep.play().catch(()=>{});
+    result.innerText = "识别成功：" + code;
+
+    // ⏸ 冻结 0.5 秒
+    Quagga.stop();
+
+    const appURL = `appsheet://app?appId=${appId}#view=${view}&row=${encodeURIComponent(code)}`;
+    const webURL = `https://www.appsheet.com/start/${appId}#view=${view}&row=${encodeURIComponent(code)}`;
+
+    const iframe = document.createElement("iframe");
+    iframe.style.display="none";
+    iframe.src = appURL;
+    document.body.appendChild(iframe);
+
+    setTimeout(()=>location.href = webURL, 500);
+}
+</script>
+
+</body>
+</html><!-- 相册裁剪 -->
 <div id="image-layer">
     <div id="image-wrapper">
         <img id="scan-image">
@@ -249,3 +374,4 @@ function success(code){
 
 </body>
 </html>
+
