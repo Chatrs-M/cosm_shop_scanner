@@ -48,6 +48,16 @@ video{width:100%;height:100%;object-fit:cover;}
 }
 
 #result{font-size:1.3em;margin:20px 0;font-weight:600;}
+
+button{
+  padding:10px 18px;
+  font-size:16px;
+  background:#d63384;
+  color:white;
+  border:none;
+  border-radius:8px;
+  margin:6px;
+}
 </style>
 </head>
 
@@ -65,6 +75,8 @@ video{width:100%;height:100%;object-fit:cover;}
 </div>
 
 <div id="result">等待扫描中...</div>
+
+<button id="flash-btn">🔦 闪光灯（关闭）</button>
 
 <audio id="beep-sound"
 src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"
@@ -90,11 +102,32 @@ let frozen = false;
 /* ===== DOM ===== */
 const result = document.getElementById("result");
 const beep   = document.getElementById("beep-sound");
+const flashBtn = document.getElementById("flash-btn");
+
+/* ===== 闪光灯 ===== */
+let track = null;
+let flashOn = false;
+
+flashBtn.onclick = async ()=>{
+  if(!track){
+    alert("摄像头未就绪");
+    return;
+  }
+
+  const cap = track.getCapabilities();
+  if(!cap.torch){
+    alert("该设备不支持闪光灯");
+    return;
+  }
+
+  flashOn = !flashOn;
+  await track.applyConstraints({ advanced:[{ torch: flashOn }] });
+  flashBtn.innerText = flashOn ? "🔦 闪光灯（开启）" : "🔦 闪光灯（关闭）";
+};
 
 /* ===== 校验逻辑 ===== */
 function process(code){
   if(frozen) return;
-
   if(!REG.test(code)) return;
   if(code.length !== LEN) return;
 
@@ -106,7 +139,6 @@ function process(code){
   }
 
   if(stableCount < CONFIRM) return;
-
   if(Date.now() - lastSuccess < THROTTLE) return;
 
   frozen = true;
@@ -120,7 +152,7 @@ Quagga.init({
     type:"LiveStream",
     target:document.querySelector("#scanner-container"),
     constraints:{ facingMode:"environment" },
-    area:{              // 中央扫描区域
+    area:{
       top:"35%",
       bottom:"35%",
       left:"15%",
@@ -136,6 +168,11 @@ Quagga.init({
   }
   Quagga.start();
   result.innerText="请将条码置于粉色框内扫描...";
+
+  const video = document.querySelector("video");
+  if(video.srcObject){
+    track = video.srcObject.getVideoTracks()[0];
+  }
 });
 
 Quagga.onDetected(res=>{
@@ -150,7 +187,7 @@ function success(code){
   beep.play().catch(()=>{});
   result.innerText = "识别成功：" + code;
 
-  Quagga.stop(); // 冻结
+  Quagga.stop(); // 冻结画面
 
   const encoded = encodeURIComponent(JSON.stringify({ BarCode: code }));
   const appURL = `appsheet://app?appId=${appId}#view=${view}&defaults=${encoded}`;
